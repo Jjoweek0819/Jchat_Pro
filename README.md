@@ -27,9 +27,3 @@ Compared to the [Basic Version](https://github.com/Jjoweek0819/Jchat-Basic-Ver-B
 - Flask
 - Flask-SocketIO
 
-### Installation
-
-1. **Clone the repository**:
-   ```bash
-   git clone [https://github.com/your-username/jchat-pro.git](https://github.com/your-username/jchat-pro.git)
-   cd jchat-pro
