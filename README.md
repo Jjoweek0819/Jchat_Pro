@@ -33,7 +33,7 @@ Special thanks to my friends who helped with the development and testing:
 
 ### 🛠 Tools Used
 * **Python**: Core programming language.
-* **PyQt6**: Desktop GUI framework.
+* **html**:Main gui language
 * **Flask-SocketIO**: Real-time messaging and file handling.
 * **PyAudio**: Audio capturing and playback.
 * **UDP Protocol**: Low-latency voice transmission.
