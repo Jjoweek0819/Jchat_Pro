@@ -1,0 +1,14 @@
+{
+  "accounts": {
+    "Jjoweek": "pbkdf2:sha256:260000$4eoMTmDJXDeoR6by$1b7617969bc5e5d608eb64ad904edf867318aac5fe5c5b23181a2d9bc51f2ba3"
+  },
+  "rooms": {
+    "general": {
+      "name": "一般",
+      "history": [],
+      "pinned": ""
+    }
+  },
+  "custom_emojis": {},
+  "profiles": {}
+}

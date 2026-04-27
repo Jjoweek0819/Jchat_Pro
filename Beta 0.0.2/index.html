@@ -1,0 +1,1818 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JChat</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #313338;
+    --bg-darker: #2b2d31;
+    --bg-darkest:#1e1f22;
+    --bg-input:  #383a40;
+    --text:      #dbdee1;
+    --text-muted:#80848e;
+    --blue:      #5865f2;
+    --blue-dark: #4752c4;
+    --green:     #23a559;
+    --red:       #ed4245;
+    --hover:     #35373c;
+    --border:    #3f4147;
+    --radius:    8px;
+    --font:      'Noto Sans TC', sans-serif;
+    --mono:      'JetBrains Mono', monospace;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    height: 100dvh;
+    display: flex;
+    overflow: hidden;
+    font-size: 14px;
+  }
+
+  /* ─── SCROLLBAR ─── */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #1a1b1e; border-radius: 3px; }
+
+  /* ─── AUTH SCREEN ─── */
+  #auth-screen {
+    position: fixed; inset: 0;
+    background: var(--bg-darkest);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1000;
+    animation: fadeIn .3s ease;
+  }
+
+  .auth-card {
+    background: var(--bg);
+    border-radius: 4px;
+    padding: 32px 32px 24px;
+    width: 420px;
+    box-shadow: 0 8px 32px rgba(0,0,0,.5);
+  }
+
+  .auth-logo {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 8px; margin-bottom: 20px;
+  }
+  .auth-logo img { width: 56px; height: 56px; }
+  .auth-logo h1 { font-size: 22px; font-weight: 700; color: white; }
+  .auth-logo p  { font-size: 13px; color: var(--text-muted); }
+
+  .form-group { margin-bottom: 16px; }
+  .form-group label {
+    display: block;
+    font-size: 11px; font-weight: 700;
+    letter-spacing: .8px; text-transform: uppercase;
+    color: var(--text-muted); margin-bottom: 6px;
+  }
+  .form-group input {
+    width: 100%; height: 40px;
+    background: var(--bg-darkest);
+    border: 1px solid transparent;
+    border-radius: 4px;
+    padding: 0 12px;
+    color: var(--text); font-size: 14px; font-family: var(--font);
+    outline: none; transition: border-color .15s;
+  }
+  .form-group input:focus { border-color: var(--blue); }
+
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    height: 40px; padding: 0 16px;
+    border: none; border-radius: 4px;
+    font-family: var(--font); font-size: 14px; font-weight: 600;
+    cursor: pointer; transition: background .15s, opacity .15s;
+    text-decoration: none;
+  }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .btn-primary   { background: var(--blue); color: white; width: 100%; height: 44px; font-size: 15px; }
+  .btn-primary:hover:not(:disabled) { background: var(--blue-dark); }
+  .btn-ghost { background: transparent; color: var(--text-muted); }
+  .btn-ghost:hover { background: var(--hover); color: var(--text); }
+  .btn-danger { background: var(--red); color: white; }
+  .btn-danger:hover { filter: brightness(1.15); }
+  .btn-success { background: var(--green); color: white; }
+  .btn-success:hover { filter: brightness(1.15); }
+
+  .auth-toggle {
+    margin-top: 12px; text-align: center;
+    font-size: 13px; color: var(--text-muted);
+  }
+  .auth-toggle a { color: #00a8fc; cursor: pointer; text-decoration: none; font-weight: 600; }
+  .auth-toggle a:hover { text-decoration: underline; }
+
+  .auth-error {
+    background: rgba(237,66,69,.15);
+    border: 1px solid rgba(237,66,69,.4);
+    border-radius: 4px; padding: 8px 12px;
+    font-size: 13px; color: #ed4245;
+    margin-bottom: 12px; display: none;
+  }
+
+  /* ─── MAIN LAYOUT ─── */
+  #app { display: none; flex: 1; overflow: hidden; }
+  #app.visible { display: flex; }
+
+  /* Room sidebar */
+  #sidebar {
+    width: 220px; min-width: 220px;
+    background: var(--bg-darker);
+    display: flex; flex-direction: column;
+    border-right: 1px solid var(--bg-darkest);
+  }
+
+  .sidebar-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--bg-darkest);
+    display: flex; align-items: center; gap: 8px;
+    cursor: pointer; user-select: none;
+    transition: background .1s;
+  }
+  .sidebar-header:hover { background: var(--hover); }
+  .sidebar-header .server-icon {
+    width: 28px; height: 28px; flex-shrink: 0;
+  }
+  .sidebar-header .server-name {
+    font-size: 14px; font-weight: 700; color: white; flex: 1;
+  }
+
+  .channel-section { padding: 16px 8px 4px; }
+  .channel-label {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 2px 8px;
+    font-size: 11px; font-weight: 700;
+    letter-spacing: .8px; text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  .channel-label button {
+    background: none; border: none; color: var(--text-muted);
+    font-size: 18px; cursor: pointer; line-height: 1;
+    padding: 0 2px; border-radius: 3px;
+  }
+  .channel-label button:hover { color: var(--text); background: var(--hover); }
+
+  #room-list { list-style: none; padding: 4px 8px; overflow-y: auto; flex: 1; }
+  #room-list li {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 8px; border-radius: 4px;
+    cursor: pointer; color: var(--text-muted);
+    font-size: 14px; font-weight: 500;
+    transition: background .1s, color .1s;
+    position: relative;
+  }
+  #room-list li:hover { background: var(--hover); color: var(--text); }
+  #room-list li.active { background: var(--border); color: white; font-weight: 600; }
+  #room-list li .room-hash { font-size: 18px; opacity: .6; }
+  #room-list li .room-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #room-list li .room-actions { display: none; gap: 2px; }
+  #room-list li:hover .room-actions { display: flex; }
+  #room-list li .room-actions button {
+    background: none; border: none; cursor: pointer;
+    font-size: 12px; padding: 2px 4px; border-radius: 3px;
+    color: var(--text-muted);
+  }
+  #room-list li .room-actions button:hover { background: var(--hover); color: var(--text); }
+
+  /* User area bottom */
+  .user-area {
+    padding: 8px;
+    background: var(--bg-darkest);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .user-area .my-avatar {
+    width: 32px; height: 32px; border-radius: 50%;
+    cursor: pointer; position: relative;
+    flex-shrink: 0;
+  }
+  .user-area .my-avatar img {
+    width: 32px; height: 32px; border-radius: 50%; object-fit: cover;
+  }
+  .online-dot {
+    position: absolute; bottom: 0; right: 0;
+    width: 10px; height: 10px;
+    background: var(--green);
+    border-radius: 50%; border: 2px solid var(--bg-darkest);
+  }
+  .user-area .my-name { flex: 1; font-size: 13px; font-weight: 600; color: white; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .user-area .my-name small { display: block; font-size: 11px; font-weight: 400; color: var(--text-muted); }
+  .user-area-btns { display: flex; gap: 2px; }
+  .user-area-btns button {
+    background: none; border: none; cursor: pointer;
+    color: var(--text-muted); font-size: 16px;
+    padding: 4px; border-radius: 4px;
+  }
+  .user-area-btns button:hover { background: var(--hover); color: var(--text); }
+
+  /* ─── CHAT AREA ─── */
+  #chat-main {
+    flex: 1; display: flex; flex-direction: column; overflow: hidden;
+    min-width: 0;
+  }
+
+  .chat-header {
+    height: 48px; padding: 0 16px;
+    display: flex; align-items: center; gap: 10px;
+    border-bottom: 1px solid var(--bg-darkest);
+    flex-shrink: 0; background: var(--bg);
+  }
+  .chat-header .hash { font-size: 22px; color: var(--text-muted); }
+  .chat-header .room-title { font-size: 15px; font-weight: 700; color: white; }
+  .chat-header .spacer { flex: 1; }
+
+  /* Pin bar */
+  #pin-bar {
+    background: var(--bg-darker);
+    border-bottom: 1px solid var(--bg-darkest);
+    padding: 6px 16px;
+    font-size: 13px; color: var(--text-muted);
+    display: none; align-items: center; gap: 8px;
+    flex-shrink: 0;
+  }
+  #pin-bar.visible { display: flex; }
+  #pin-bar .pin-icon { color: var(--blue); flex-shrink: 0; }
+  #pin-bar .pin-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* Messages */
+  #messages {
+    flex: 1; overflow-y: auto;
+    padding: 16px 0;
+    display: flex; flex-direction: column;
+  }
+
+  .msg-group {
+    display: flex; gap: 12px;
+    padding: 2px 16px 2px;
+    transition: background .1s;
+    position: relative;
+  }
+  .msg-group:hover { background: rgba(0,0,0,.06); }
+  .msg-group .avatar {
+    width: 40px; height: 40px; border-radius: 50%;
+    flex-shrink: 0; cursor: pointer;
+    object-fit: cover;
+  }
+  .msg-group .msg-content { flex: 1; min-width: 0; }
+  .msg-group .msg-header {
+    display: flex; align-items: baseline; gap: 8px; margin-bottom: 2px;
+  }
+  .msg-group .msg-sender {
+    font-weight: 600; font-size: 14px; color: white;
+    cursor: pointer;
+  }
+  .msg-group .msg-sender:hover { text-decoration: underline; }
+  .msg-group .msg-time {
+    font-size: 11px; color: var(--text-muted);
+    font-family: var(--mono);
+  }
+  .msg-group .msg-text {
+    font-size: 14px; line-height: 1.55;
+    color: var(--text); word-break: break-word;
+    white-space: pre-wrap;
+  }
+  .msg-group .msg-text a { color: #00a8fc; }
+
+  /* continued messages (same sender) */
+  .msg-continued .avatar { visibility: hidden; }
+  .msg-continued .msg-header { display: none; }
+  .msg-continued { padding-top: 1px; }
+
+  /* System message */
+  .msg-system {
+    text-align: center; padding: 4px 16px;
+    font-size: 12px; color: var(--text-muted);
+    font-style: italic;
+  }
+
+  /* Date divider */
+  .date-divider {
+    display: flex; align-items: center; gap: 12px;
+    padding: 8px 16px; color: var(--text-muted); font-size: 12px;
+  }
+  .date-divider::before, .date-divider::after {
+    content: ''; flex: 1; height: 1px; background: var(--border);
+  }
+
+  /* Image message */
+  .msg-image {
+    margin-top: 6px;
+    max-width: 400px; max-height: 300px;
+    border-radius: 6px; cursor: pointer;
+    object-fit: contain;
+  }
+
+  /* File message */
+  .msg-file {
+    margin-top: 4px; display: inline-flex; align-items: center; gap: 10px;
+    background: var(--bg-darker); border: 1px solid var(--border);
+    border-radius: 6px; padding: 10px 14px;
+    max-width: 360px; cursor: pointer;
+    text-decoration: none; color: inherit;
+    transition: background .1s;
+  }
+  .msg-file:hover { background: var(--hover); }
+  .msg-file .file-icon { font-size: 28px; }
+  .msg-file .file-info .file-name { font-size: 13px; font-weight: 600; color: white; }
+  .msg-file .file-info .file-size { font-size: 11px; color: var(--text-muted); }
+
+  /* Voice clip */
+  .msg-audio { margin-top: 4px; }
+  .msg-audio audio { border-radius: 24px; height: 36px; }
+
+  /* ─── TYPING BAR ─── */
+  .typing-bar {
+    padding: 0 16px 4px;
+    font-size: 12px; color: var(--text-muted);
+    min-height: 20px; display: flex; align-items: center; gap: 4px;
+    flex-shrink: 0;
+  }
+  .typing-dot {
+    display: inline-block;
+    width: 5px; height: 5px;
+    background: var(--text-muted);
+    border-radius: 50%;
+    animation: bounce 1.2s infinite ease-in-out;
+    margin-right: 1px;
+  }
+  .typing-dot:nth-child(2) { animation-delay: .2s; }
+  .typing-dot:nth-child(3) { animation-delay: .4s; }
+  @keyframes bounce {
+    0%,80%,100% { transform: translateY(0); }
+    40%         { transform: translateY(-4px); }
+  }
+
+  /* ─── INPUT BAR ─── */
+  .input-bar {
+    padding: 0 16px 16px; flex-shrink: 0;
+  }
+  .input-wrapper {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--bg-input);
+    border-radius: var(--radius);
+    padding: 4px 8px 4px 12px;
+  }
+  #msg-input {
+    flex: 1; background: none; border: none; outline: none;
+    color: var(--text); font-size: 14px; font-family: var(--font);
+    line-height: 1.4; resize: none;
+    max-height: 180px; min-height: 24px;
+    padding: 8px 0;
+  }
+  #msg-input::placeholder { color: var(--text-muted); }
+
+  .input-btn {
+    background: none; border: none; cursor: pointer;
+    color: var(--text-muted); font-size: 20px;
+    padding: 4px; border-radius: 4px;
+    transition: color .1s, background .1s;
+    flex-shrink: 0;
+  }
+  .input-btn:hover { color: var(--text); background: var(--hover); }
+
+  /* Emoji picker */
+  #emoji-picker {
+    position: absolute; bottom: 72px; left: 16px;
+    width: 360px; max-height: 320px;
+    background: #111214; border: 1px solid #3f4147;
+    border-radius: 8px; overflow: hidden;
+    display: none; flex-direction: column;
+    z-index: 50;
+    box-shadow: 0 8px 24px rgba(0,0,0,.5);
+  }
+  #emoji-picker.visible { display: flex; }
+  #emoji-picker .ep-search {
+    padding: 8px; border-bottom: 1px solid var(--border);
+  }
+  #emoji-picker .ep-search input {
+    width: 100%; background: var(--bg-input);
+    border: none; border-radius: 4px; padding: 6px 10px;
+    color: var(--text); font-size: 13px; outline: none;
+  }
+  #emoji-picker .ep-grid {
+    display: flex; flex-wrap: wrap; gap: 2px;
+    padding: 8px; overflow-y: auto; flex: 1;
+  }
+  #emoji-picker .ep-grid span {
+    font-size: 22px; cursor: pointer;
+    padding: 4px; border-radius: 4px;
+    transition: background .1s;
+  }
+  #emoji-picker .ep-grid span:hover { background: var(--hover); }
+
+  /* ─── USER LIST ─── */
+  #user-panel {
+    width: 200px; min-width: 200px;
+    background: var(--bg-darker);
+    border-left: 1px solid var(--bg-darkest);
+    overflow-y: auto; padding: 12px 8px;
+  }
+  .user-section-label {
+    font-size: 11px; font-weight: 700;
+    letter-spacing: .8px; text-transform: uppercase;
+    color: var(--text-muted); padding: 4px 8px;
+    margin-bottom: 4px;
+  }
+  .user-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 4px 8px; border-radius: 4px;
+    cursor: pointer; transition: background .1s;
+    margin-bottom: 2px;
+  }
+  .user-item:hover { background: var(--hover); }
+  .user-avatar-wrap { position: relative; flex-shrink: 0; }
+  .user-avatar-wrap img {
+    width: 32px; height: 32px; border-radius: 50%; object-fit: cover;
+  }
+  .user-online-dot {
+    position: absolute; bottom: 0; right: 0;
+    width: 10px; height: 10px;
+    background: var(--green); border-radius: 50%;
+    border: 2px solid var(--bg-darker);
+  }
+  .user-name { font-size: 13px; font-weight: 500; color: var(--text-muted); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .user-item:hover .user-name { color: var(--text); }
+  .user-voice-icon { font-size: 14px; }
+
+  /* ─── MODALS ─── */
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,.7);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 200; animation: fadeIn .15s ease;
+  }
+  .modal {
+    background: var(--bg-darker);
+    border-radius: 8px; padding: 24px;
+    width: 440px; max-width: 95vw;
+    box-shadow: 0 16px 48px rgba(0,0,0,.5);
+    animation: slideUp .2s ease;
+  }
+  .modal h2 { font-size: 18px; font-weight: 700; color: white; margin-bottom: 16px; }
+  .modal .close-btn {
+    float: right; background: none; border: none;
+    color: var(--text-muted); font-size: 20px; cursor: pointer;
+  }
+  .modal .close-btn:hover { color: var(--text); }
+  .modal .modal-footer {
+    display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px;
+  }
+
+  /* Profile modal */
+  .profile-header {
+    display: flex; align-items: center; gap: 16px; margin-bottom: 16px;
+  }
+  .profile-avatar-wrap { position: relative; cursor: pointer; }
+  .profile-avatar-wrap img {
+    width: 72px; height: 72px; border-radius: 50%; object-fit: cover;
+    border: 3px solid var(--blue);
+  }
+  .profile-avatar-wrap .edit-overlay {
+    position: absolute; inset: 0; border-radius: 50%;
+    background: rgba(0,0,0,.5);
+    display: none; align-items: center; justify-content: center;
+    font-size: 20px;
+  }
+  .profile-avatar-wrap:hover .edit-overlay { display: flex; }
+  .profile-info h3 { font-size: 16px; font-weight: 700; color: white; }
+  .profile-info p  { font-size: 12px; color: var(--text-muted); }
+
+  .profile-field { margin-bottom: 12px; }
+  .profile-field label {
+    display: block; font-size: 11px; font-weight: 700;
+    letter-spacing: .8px; text-transform: uppercase;
+    color: var(--text-muted); margin-bottom: 6px;
+  }
+  .profile-field input, .profile-field textarea {
+    width: 100%; background: var(--bg-darkest);
+    border: 1px solid transparent; border-radius: 4px;
+    padding: 8px 12px; color: var(--text);
+    font-size: 13px; font-family: var(--font); outline: none;
+    transition: border-color .15s; resize: vertical;
+  }
+  .profile-field input:focus, .profile-field textarea:focus { border-color: var(--blue); }
+
+  /* Image lightbox */
+  #lightbox {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,.9);
+    display: none; align-items: center; justify-content: center;
+    z-index: 500; cursor: zoom-out;
+  }
+  #lightbox.visible { display: flex; }
+  #lightbox img { max-width: 90vw; max-height: 90vh; border-radius: 4px; }
+
+  /* Toast notifications */
+  #toast-container {
+    position: fixed; bottom: 24px; right: 24px;
+    display: flex; flex-direction: column; gap: 8px; z-index: 999;
+  }
+  .toast {
+    background: #111214; border: 1px solid var(--border);
+    border-radius: 6px; padding: 10px 16px;
+    font-size: 13px; color: var(--text);
+    box-shadow: 0 4px 12px rgba(0,0,0,.4);
+    animation: slideInRight .25s ease;
+    max-width: 300px;
+  }
+  .toast.success { border-color: var(--green); }
+  .toast.error   { border-color: var(--red); }
+
+  /* ─── UPLOAD PROGRESS ─── */
+  .upload-progress {
+    height: 3px; background: var(--blue);
+    position: absolute; bottom: 0; left: 0;
+    transition: width .2s; border-radius: 0 0 0 8px;
+  }
+
+  /* ─── TYPING INDICATOR ─── */
+  .typing-bar {
+    height: 20px; padding: 0 16px;
+    font-size: 12px; color: var(--text-muted);
+    font-style: italic; flex-shrink: 0;
+  }
+
+  /* ─── ANIMATIONS ─── */
+  @keyframes fadeIn  { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  @keyframes slideInRight { from { transform: translateX(40px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+  /* ─── RESPONSIVE ─── */
+  @media (max-width: 700px) {
+    #user-panel { display: none; }
+    #sidebar { width: 180px; min-width: 180px; }
+  }
+  @media (max-width: 480px) {
+    #sidebar { display: none; }
+    #sidebar.mobile-open { display: flex; position: fixed; inset: 0; z-index: 100; width: 240px; }
+  }
+
+  /* ─── CONTEXT MENU ─── */
+  .ctx-menu {
+    position: fixed; background: #111214;
+    border: 1px solid #000; border-radius: 4px;
+    padding: 4px; z-index: 300; min-width: 160px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.5);
+    animation: fadeIn .1s ease;
+  }
+  .ctx-menu button {
+    display: block; width: 100%;
+    background: none; border: none;
+    color: var(--text); text-align: left;
+    padding: 6px 10px; border-radius: 3px;
+    font-size: 13px; cursor: pointer;
+  }
+  .ctx-menu button:hover { background: var(--blue); color: white; }
+  .ctx-menu button.danger { color: var(--red); }
+  .ctx-menu button.danger:hover { background: var(--red); color: white; }
+
+  /* ─── UNREAD BADGE ─── */
+  .unread-badge {
+    background: var(--red); color: white;
+    font-size: 10px; font-weight: 700;
+    min-width: 16px; height: 16px;
+    border-radius: 8px; padding: 0 4px;
+    display: inline-flex; align-items: center; justify-content: center;
+    margin-left: auto;
+  }
+
+  /* welomce banner */
+  .welcome-banner {
+    padding: 32px 16px 16px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 16px;
+  }
+  .welcome-banner h2 { font-size: 28px; font-weight: 800; color: white; margin-bottom: 6px; }
+  .welcome-banner p  { color: var(--text-muted); font-size: 14px; }
+
+  /* mention highlight */
+  .mention { color: var(--blue); background: rgba(88,101,242,.2); border-radius: 3px; padding: 0 2px; }
+
+  /* inline code */
+  .inline-code {
+    font-family: var(--mono); background: var(--bg-darkest);
+    border-radius: 3px; padding: 1px 4px; font-size: 13px;
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════ AUTH SCREEN ═══════════════ -->
+<div id="auth-screen">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <svg width="56" height="56" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect width="100" height="100" rx="25" fill="black"/>
+        <path d="M26.625 36.5C23.8292 36.5 21.5417 34.2125 21.5417 31.4167V18.7083C21.5417 15.9125 23.8292 13.625 26.625 13.625H46.9584C49.7542 13.625 52.0417 15.9125 52.0417 18.7083V31.4167C52.0417 34.2125 49.7542 36.5 46.9584 36.5H41.875V44.125L34.25 36.5H26.625ZM72.375 51.75C75.1709 51.75 77.4584 49.4625 77.4584 46.6667V33.9583C77.4584 31.1625 75.1709 28.875 72.375 28.875H57.125V31.4167C57.125 37.0083 52.55 41.5833 46.9584 41.5833V46.6667C46.9584 49.4625 49.2459 51.75 52.0417 51.75H57.125V59.375L64.75 51.75H72.375Z" fill="white"/>
+        <path d="M17.896 91.672C17.6293 91.672 17.496 91.5387 17.496 91.272V88.232C17.496 88.0293 17.5493 87.8693 17.656 87.752L20.024 85.384C20.152 85.2667 20.216 85.096 20.216 84.872V68.072C20.216 67.8053 20.3493 67.672 20.616 67.672H25.56C25.8267 67.672 25.96 67.8053 25.96 68.072V87.608C25.96 87.704 25.9493 87.7947 25.928 87.88C25.9067 87.9547 25.8533 88.0347 25.768 88.12L22.456 91.432C22.296 91.592 22.136 91.672 21.976 91.672H17.896ZM34.972 89C34.716 89 34.5027 88.9307 34.332 88.792L31.98 86.584L29.228 83.288C29.1107 83.1493 29.036 83.0587 29.004 83.016C28.972 82.9627 28.956 82.856 28.956 82.696V73.96C28.956 73.8 28.972 73.6987 29.004 73.656C29.036 73.6027 29.1107 73.5067 29.228 73.368L31.66 70.44L34.332 67.88C34.4387 67.784 34.5293 67.7253 34.604 67.704C34.6893 67.6827 34.812 67.672 34.972 67.672H39.084C39.3507 67.672 39.484 67.8053 39.484 68.072V71.208C39.484 71.2933 39.4733 71.384 39.452 71.48C39.4413 71.5653 39.3933 71.64 39.308 71.704L36.572 73.784L34.684 76.056V80.696L36.652 83.048L39.308 85.032C39.3933 85.096 39.4413 85.1653 39.452 85.24C39.4733 85.3147 39.484 85.4 39.484 85.496V88.6C39.484 88.8667 39.3507 89 39.084 89H34.972ZM42.436 89C42.1693 89 42.036 88.8667 42.036 88.6V68.072C42.036 67.8053 42.1693 67.672 42.436 67.672H46.948C47.2147 67.672 47.348 67.8053 47.348 68.072V71.4H50.996C51.2413 71.4 51.4547 71.4907 51.636 71.672L54.836 74.872C55.0067 75.0427 55.092 75.256 55.092 75.512V88.6C55.092 88.8667 54.9587 89 54.692 89H50.18C49.9133 89 49.78 88.8667 49.78 88.6V76.648C49.78 76.2 49.556 75.976 49.108 75.976H47.348V88.6C47.348 88.8667 47.2147 89 46.948 89H42.436ZM62.1305 89C61.8852 89 61.6718 88.9093 61.4905 88.728L58.2905 85.528C58.1092 85.3573 58.0185 85.144 58.0185 84.888V75.512C58.0185 75.256 58.1092 75.0427 58.2905 74.872L61.4905 71.672C61.6718 71.4907 61.8852 71.4 62.1305 71.4H70.6905C70.9572 71.4 71.0905 71.5333 71.0905 71.8V88.6C71.0905 88.8667 70.9572 89 70.6905 89H67.1385C66.9998 89 66.8878 88.9787 66.8025 88.936C66.7278 88.8827 66.6478 88.8133 66.5625 88.728L65.7625 87.928L64.9625 88.728C64.7918 88.9093 64.5785 89 64.3225 89H62.1305ZM64.1625 84.776H64.9465C65.2558 84.776 65.4692 84.712 65.5865 84.584C65.7038 84.4453 65.7625 84.2213 65.7625 83.912V75.624H64.1785C63.8692 75.624 63.6505 75.6933 63.5225 75.832C63.3945 75.96 63.3305 76.1787 63.3305 76.488V83.912C63.3305 84.2213 63.3892 84.4453 63.5065 84.584C63.6345 84.712 63.8532 84.776 64.1625 84.776ZM77.9393 89C77.6939 89 77.4806 88.9093 77.2993 88.728L74.6273 86.072C74.4566 85.8907 74.3713 85.6773 74.3713 85.432V75.624H73.6993C73.4326 75.624 73.2993 75.4907 73.2993 75.224V71.8C73.2993 71.5333 73.4326 71.4 73.6993 71.4H74.3713V69.4C74.3713 69.1333 74.5046 69 74.7713 69H79.2673C79.5339 69 79.6673 69.1333 79.6673 69.4V71.4H81.2193C81.4859 71.4 81.6193 71.5333 81.6193 71.8V75.224C81.6193 75.4907 81.4859 75.624 81.2193 75.624H79.6673V83.496C79.6673 83.7093 79.7313 83.88 79.8593 84.008L81.4273 85.576C81.5339 85.6827 81.5873 85.8427 81.5873 86.056V88.6C81.5873 88.8667 81.4539 89 81.1873 89H77.9393Z" fill="white"/>
+      </svg>
+      <h1>JChat</h1>
+      <p id="auth-subtitle">很高興見到你！</p>
+    </div>
+
+    <div class="auth-error" id="auth-error"></div>
+
+    <!-- LOGIN FORM -->
+    <div id="login-form">
+      <div class="form-group">
+        <label>帳號</label>
+        <input type="text" id="login-user" placeholder="輸入帳號" autocomplete="username">
+      </div>
+      <div class="form-group">
+        <label>密碼</label>
+        <input type="password" id="login-pass" placeholder="輸入密碼" autocomplete="current-password">
+      </div>
+      <button class="btn btn-primary" id="login-btn">登入</button>
+      <div class="auth-toggle">
+        還沒有帳號？ <a id="goto-register">立即註冊</a>
+      </div>
+    </div>
+
+    <!-- REGISTER FORM -->
+    <div id="register-form" style="display:none">
+      <div class="form-group">
+        <label>帳號</label>
+        <input type="text" id="reg-user" placeholder="輸入帳號（2~20字）" autocomplete="username">
+      </div>
+      <div class="form-group">
+        <label>密碼</label>
+        <input type="password" id="reg-pass" placeholder="輸入密碼" autocomplete="new-password">
+      </div>
+      <button class="btn btn-primary" id="register-btn">建立帳號</button>
+      <div class="auth-toggle">
+        已有帳號？ <a id="goto-login">點此登入</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ MAIN APP ═══════════════ -->
+<div id="app">
+
+  <!-- Sidebar -->
+  <nav id="sidebar">
+    <div class="sidebar-header" title="JChat">
+      <svg class="server-icon" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect width="100" height="100" rx="25" fill="black"/>
+        <path d="M26.625 36.5C23.8292 36.5 21.5417 34.2125 21.5417 31.4167V18.7083C21.5417 15.9125 23.8292 13.625 26.625 13.625H46.9584C49.7542 13.625 52.0417 15.9125 52.0417 18.7083V31.4167C52.0417 34.2125 49.7542 36.5 46.9584 36.5H41.875V44.125L34.25 36.5H26.625ZM72.375 51.75C75.1709 51.75 77.4584 49.4625 77.4584 46.6667V33.9583C77.4584 31.1625 75.1709 28.875 72.375 28.875H57.125V31.4167C57.125 37.0083 52.55 41.5833 46.9584 41.5833V46.6667C46.9584 49.4625 49.2459 51.75 52.0417 51.75H57.125V59.375L64.75 51.75H72.375Z" fill="white"/>
+      </svg>
+      <span class="server-name">JChat</span>
+    </div>
+
+    <div class="channel-section">
+      <div class="channel-label">
+        <span>頻道</span>
+        <button id="create-room-btn" title="建立頻道">＋</button>
+      </div>
+    </div>
+    <ul id="room-list"></ul>
+
+    <div class="user-area">
+      <div class="my-avatar" id="my-avatar-wrap">
+        <img id="my-avatar-img" src="" alt="">
+        <div class="online-dot"></div>
+      </div>
+      <div class="my-name">
+        <span id="my-nickname">...</span>
+        <small id="my-status-text"></small>
+      </div>
+      <div class="user-area-btns">
+        <button id="profile-btn" title="個人資料">⚙️</button>
+        <button id="rename-account-btn" title="帳號設定">👤</button>
+        <button id="logout-btn" title="登出">🚪</button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Chat Main -->
+  <main id="chat-main">
+    <div class="chat-header">
+      <span class="hash">#</span>
+      <span class="room-title" id="current-room-name">一般</span>
+      <span class="spacer"></span>
+      <button class="btn btn-ghost" id="pin-toggle-btn" title="釘選訊息" style="font-size:16px">📌</button>
+    </div>
+
+    <div id="pin-bar">
+      <span class="pin-icon">📌</span>
+      <span class="pin-text" id="pin-text"></span>
+      <button class="btn btn-ghost" id="unpin-btn" style="font-size:12px;padding:2px 8px">解除</button>
+    </div>
+
+    <div id="messages"></div>
+
+    <div class="typing-bar" id="typing-bar"></div>
+
+    <div class="input-bar" style="position:relative">
+      <div id="emoji-picker">
+        <div class="ep-search"><input type="text" id="ep-search-input" placeholder="搜尋 Emoji…"></div>
+        <div class="ep-grid" id="ep-grid"></div>
+      </div>
+      <div class="input-wrapper">
+        <button class="input-btn" id="emoji-btn" title="Emoji">😊</button>
+        <button class="input-btn" id="file-btn" title="傳送檔案">📎</button>
+        <textarea id="msg-input" rows="1" placeholder="傳送訊息…"></textarea>
+        <button class="input-btn" id="mic-btn" title="語音通話">🎤</button>
+        <button class="input-btn" id="send-btn" title="傳送">➤</button>
+      </div>
+      <input type="file" id="file-input" style="display:none" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.txt">
+    </div>
+  </main>
+
+  <!-- User panel -->
+  <aside id="user-panel">
+    <div class="user-section-label" id="online-label">在線上 — 0</div>
+    <div id="user-list"></div>
+  </aside>
+</div>
+
+<!-- ─── IMAGE LIGHTBOX ─── -->
+<div id="lightbox"><img id="lightbox-img" src="" alt=""></div>
+
+<!-- ─── TOAST ─── -->
+<div id="toast-container"></div>
+
+<!-- ─── MODALS ─── -->
+<div id="modal-container"></div>
+
+<script>
+// ════════════════════════════════════════════════════════════
+//  CONFIG
+// ════════════════════════════════════════════════════════════
+const SERVER_URL = window.location.origin; // same host
+
+// ════════════════════════════════════════════════════════════
+//  STATE
+// ════════════════════════════════════════════════════════════
+let socket = null;
+let myNick  = '';
+let myAvatar = '';
+let currentRoom = 'general';
+let rooms = {};           // { id: {name, pinned} }
+let roomHistories = {};   // { room_id: [msg,...] }
+let roomPins = {};        // { room_id: text }
+let avatarCache = {};     // { username: b64 }
+let serverEmojis = {};    // { code: {b64, ext} }
+let onlineUsers = [];     // [{ name, voice, avatar }]
+let unreadCounts = {};    // { room_id: n }
+let typingUsers = new Set();
+let typingTimer = null;
+
+const BUILTIN_EMOJI = [
+  "😀","😁","😂","🤣","🥹","😍","🥰","😘","😎","🤔",
+  "😭","😡","🥳","😴","😱","🤯","😏","🙄","😅","😬",
+  "🤩","😇","🥺","😤","😒","😔","🤗","😋","😜","🤪",
+  "👍","👎","👏","🙏","💪","🤝","✌️","🤞","👀","🫶",
+  "❤️","🧡","💛","💚","💙","💜","🖤","💔","❤️‍🔥","💯",
+  "✅","❌","⭐","🌟","💫","🔥","💥","🎉","🎊","🚀",
+  "🐱","🐶","🐸","🦊","🐼","🦁","🐧","🦋","🍕","🍜",
+  "💀","🤡","👻","💩","🎮","🎵","📸","🌈","☀️","🌙",
+];
+
+// ════════════════════════════════════════════════════════════
+//  UTILS
+// ════════════════════════════════════════════════════════════
+function avatarUrl(name) {
+  const b64 = avatarCache[name];
+  if (b64) return 'data:image/png;base64,' + b64;
+  return defaultAvatar(name);
+}
+
+function defaultAvatar(name) {
+  const colors = ["#5C6BC0","#26A69A","#EF5350","#AB47BC","#FFA726","#66BB6A"];
+  const c = colors[(name || '').split('').reduce((a,ch)=>a+ch.charCodeAt(0),0) % colors.length];
+  const letter = (name || '?')[0].toUpperCase();
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40'><circle cx='20' cy='20' r='20' fill='${c}'/><text x='20' y='26' font-size='16' font-weight='bold' fill='white' text-anchor='middle' font-family='sans-serif'>${letter}</text></svg>`;
+  return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+}
+
+function formatTime(t) {
+  if (!t) return '';
+  const d = new Date(t.replace(' ','T'));
+  if (isNaN(d)) return t;
+  return d.toLocaleTimeString('zh-TW', {hour:'2-digit', minute:'2-digit'});
+}
+
+function formatDate(t) {
+  if (!t) return '';
+  const d = new Date(t.replace(' ','T'));
+  if (isNaN(d)) return '';
+  const today = new Date();
+  if (d.toDateString() === today.toDateString()) return '今天';
+  const yest = new Date(today); yest.setDate(yest.getDate()-1);
+  if (d.toDateString() === yest.toDateString()) return '昨天';
+  return d.toLocaleDateString('zh-TW');
+}
+
+function formatSize(bytes) {
+  if (!bytes) return '';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024*1024) return (bytes/1024).toFixed(1) + ' KB';
+  return (bytes/1024/1024).toFixed(1) + ' MB';
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function renderText(text) {
+  let s = escapeHtml(text);
+  // mentions
+  s = s.replace(/@(\w+)/g, '<span class="mention">@$1</span>');
+  // inline code（內容已被 escapeHtml 處理，直接使用）
+  s = s.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
+  // URLs — 只允許 http/https，防止 javascript: 偽協議 XSS
+  s = s.replace(/(https?:\/\/[^\s<&"]+)/g, (_, url) => {
+    const safeUrl = escapeHtml(url);
+    return `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer">${safeUrl}</a>`;
+  });
+  return s;
+}
+
+function toast(msg, type='') {
+  const el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.textContent = msg;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(()=>el.remove(), 3000);
+}
+
+function showError(msg) {
+  const el = document.getElementById('auth-error');
+  el.textContent = msg; el.style.display = 'block';
+}
+
+function hideError() {
+  document.getElementById('auth-error').style.display = 'none';
+}
+
+function isNearBottom() {
+  const msgs = document.getElementById('messages');
+  return msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight < 80;
+}
+
+function scrollToBottom(force=false) {
+  const msgs = document.getElementById('messages');
+  if (force || isNearBottom()) msgs.scrollTop = msgs.scrollHeight;
+}
+
+function closeAllCtxMenus() {
+  document.querySelectorAll('.ctx-menu').forEach(e=>e.remove());
+}
+
+// ════════════════════════════════════════════════════════════
+//  SOCKET.IO
+// ════════════════════════════════════════════════════════════
+function connectSocket() {
+  socket = io(SERVER_URL, { transports: ['websocket','polling'] });
+
+  socket.on('connect', () => console.log('Socket connected'));
+  socket.on('disconnect', () => toast('與伺服器斷線，正在重連…', 'error'));
+
+  socket.on('update_room_list', (list) => {
+    // list: [{id, name}, ...]
+    const prev = {...rooms};
+    list.forEach(r => { rooms[r.id] = rooms[r.id] || {}; rooms[r.id].name = r.name; });
+    // remove deleted rooms
+    Object.keys(rooms).forEach(id => { if (!list.find(r=>r.id===id)) delete rooms[id]; });
+    renderRoomList();
+  });
+
+  socket.on('load_history', (data) => {
+    roomHistories[data.room_id] = data.history || [];
+    if (data.room_id === currentRoom) renderMessages();
+  });
+
+  socket.on('receive_message', (msg) => {
+    if (!roomHistories[msg.room_id]) roomHistories[msg.room_id] = [];
+    const hist = roomHistories[msg.room_id];
+    hist.push(msg);
+    // 如果是自己送出的訊息，從 pending 移除（避免重複）
+    const isMine = msg.sender === myNick && msg.type === 'text' && pendingMsgs.has(msg.text);
+    if (isMine) pendingMsgs.delete(msg.text);
+    if (msg.room_id === currentRoom) {
+      appendMessage(msg, hist.length-1);
+      if (isMine) scrollToBottom(true);
+      else scrollToBottom();
+    } else {
+      unreadCounts[msg.room_id] = (unreadCounts[msg.room_id]||0)+1;
+      renderRoomList();
+      // browser notification
+      if (Notification.permission === 'granted') {
+        new Notification(`JChat #${rooms[msg.room_id]?.name||msg.room_id}`, {
+          body: `${msg.sender}: ${msg.text||'[媒體]'}`, icon: '/favicon.ico'
+        });
+      }
+    }
+  });
+
+  socket.on('update_user_list', (data) => {
+    if (data.room_id === currentRoom) {
+      onlineUsers = data.users || [];
+      onlineUsers.forEach(u => { if (u.avatar) avatarCache[u.name] = u.avatar; });
+      renderUserList();
+    }
+  });
+
+  socket.on('update_pinned', (data) => {
+    roomPins[data.room_id] = data.text || '';
+    if (data.room_id === currentRoom) renderPin();
+  });
+
+  socket.on('load_avatars', (avs) => {
+    Object.assign(avatarCache, avs);
+    updateMyAvatar();
+    if (currentRoom) renderMessages(); // refresh avatars
+  });
+
+  socket.on('avatar_updated', (data) => {
+    avatarCache[data.username] = data.avatar;
+    if (data.username === myNick) updateMyAvatar();
+    renderUserList();
+    // re-render avatars in chat
+    document.querySelectorAll(`.msg-group[data-sender="${CSS.escape(data.username)}"] .avatar`).forEach(img => {
+      img.src = avatarUrl(data.username);
+    });
+  });
+
+  socket.on('load_custom_emojis', (emojis) => {
+    serverEmojis = emojis || {};
+    buildEmojiGrid();
+  });
+  socket.on('emoji_updated', (data) => {
+    serverEmojis[data.code] = { b64: data.b64, ext: data.ext };
+    buildEmojiGrid();
+  });
+  socket.on('emoji_deleted', (data) => {
+    delete serverEmojis[data.code];
+    buildEmojiGrid();
+  });
+
+  socket.on('profile_updated', (data) => {
+    if (data.username === myNick) {
+      document.getElementById('my-status-text').textContent = data.user_status || '';
+    }
+  });
+
+  socket.on('force_join_room', (data) => {
+    currentRoom = data.room_id;
+    document.getElementById('current-room-name').textContent = data.name;
+    renderRoomList();
+    renderMessages();
+    renderPin();
+    toast(`你被移至 #${data.name}`, 'error');
+  });
+
+  socket.on('user_typing', (data) => {
+    typingUsers.add(data.username);
+    renderTypingBar();
+  });
+
+  socket.on('user_stop_typing', (data) => {
+    typingUsers.delete(data.username);
+    renderTypingBar();
+  });
+}
+
+function renderTypingBar() {
+  const bar = document.getElementById('typing-bar');
+  const users = [...typingUsers];
+  if (!users.length) { bar.innerHTML = ''; return; }
+  let txt = '';
+  if (users.length === 1) txt = `<strong>${escapeHtml(users[0])}</strong> 正在輸入…`;
+  else if (users.length === 2) txt = `<strong>${escapeHtml(users[0])}</strong> 和 <strong>${escapeHtml(users[1])}</strong> 正在輸入…`;
+  else txt = `有 ${users.length} 位使用者正在輸入…`;
+  bar.innerHTML = `<span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span> ${txt}`;
+}
+
+// ════════════════════════════════════════════════════════════
+//  AUTH
+// ════════════════════════════════════════════════════════════
+document.getElementById('goto-register').onclick = () => {
+  document.getElementById('login-form').style.display = 'none';
+  document.getElementById('register-form').style.display = 'block';
+  document.getElementById('auth-subtitle').textContent = '建立新帳號！';
+  hideError();
+};
+document.getElementById('goto-login').onclick = () => {
+  document.getElementById('register-form').style.display = 'none';
+  document.getElementById('login-form').style.display = 'block';
+  document.getElementById('auth-subtitle').textContent = '很高興見到你！';
+  hideError();
+};
+
+document.getElementById('login-btn').onclick = doLogin;
+document.getElementById('register-btn').onclick = doRegister;
+
+document.getElementById('login-pass').onkeydown = e => { if (e.key==='Enter') doLogin(); };
+document.getElementById('reg-pass').onkeydown   = e => { if (e.key==='Enter') doRegister(); };
+
+function doLogin() {
+  const u = document.getElementById('login-user').value.trim();
+  const p = document.getElementById('login-pass').value.trim();
+  if (!u || !p) return showError('請填寫帳號和密碼');
+  hideError();
+  const btn = document.getElementById('login-btn');
+  btn.disabled = true; btn.textContent = '登入中…';
+
+  if (!socket || !socket.connected) connectSocket();
+  socket.once('connect', () => {
+    emitLogin(u, p, btn);
+  });
+  if (socket.connected) emitLogin(u, p, btn);
+}
+
+function emitLogin(u, p, btn) {
+  socket.emit('login', { username: u, password: p }, (res) => {
+    btn.disabled = false; btn.textContent = '登入';
+    if (!res) return showError('伺服器無回應');
+    if (res.status !== 'success') return showError(res.message || '登入失敗');
+    onLoginSuccess(res);
+  });
+}
+
+function doRegister() {
+  const u = document.getElementById('reg-user').value.trim();
+  const p = document.getElementById('reg-pass').value.trim();
+  if (!u || !p) return showError('請填寫帳號和密碼');
+  hideError();
+  const btn = document.getElementById('register-btn');
+  btn.disabled = true; btn.textContent = '建立中…';
+
+  if (!socket || !socket.connected) connectSocket();
+  const tryRegister = () => {
+    socket.emit('register', { username: u, password: p }, (res) => {
+      btn.disabled = false; btn.textContent = '建立帳號';
+      if (!res) return showError('伺服器無回應');
+      if (res.status !== 'success') return showError(res.message || '註冊失敗');
+      toast('✅ 註冊成功！請登入', 'success');
+      document.getElementById('goto-login').click();
+      document.getElementById('login-user').value = u;
+    });
+  };
+  if (socket.connected) tryRegister();
+  else socket.once('connect', tryRegister);
+}
+
+function onLoginSuccess(res) {
+  myNick   = res.nickname;
+  myAvatar = res.avatar || '';
+  if (myAvatar) avatarCache[myNick] = myAvatar;
+
+  document.getElementById('my-nickname').textContent = myNick;
+  const st = res.profile?.status || '';
+  document.getElementById('my-status-text').textContent = st;
+  updateMyAvatar();
+
+  document.getElementById('auth-screen').style.display = 'none';
+  document.getElementById('app').classList.add('visible');
+
+  currentRoom = 'general';
+  buildEmojiGrid();
+  renderRoomList();
+  // request notification permission
+  if (Notification.permission === 'default') Notification.requestPermission();
+}
+
+function updateMyAvatar() {
+  const img = document.getElementById('my-avatar-img');
+  img.src = avatarUrl(myNick);
+  img.onerror = () => { img.src = defaultAvatar(myNick); };
+}
+
+document.getElementById('logout-btn').onclick = () => {
+  if (!confirm('確定要登出嗎？')) return;
+  socket.disconnect();
+  location.reload();
+};
+
+// ════════════════════════════════════════════════════════════
+//  ROOM LIST
+// ════════════════════════════════════════════════════════════
+function renderRoomList() {
+  const ul = document.getElementById('room-list');
+  ul.innerHTML = '';
+  Object.entries(rooms).forEach(([id, r]) => {
+    const li = document.createElement('li');
+    li.className = id === currentRoom ? 'active' : '';
+    const unread = unreadCounts[id] || 0;
+    li.innerHTML = `
+      <span class="room-hash">#</span>
+      <span class="room-name">${escapeHtml(r.name)}</span>
+      ${unread ? `<span class="unread-badge">${unread}</span>` : ''}
+      <span class="room-actions">
+        ${id !== 'general' ? `<button class="rename-room-btn" data-id="${id}" title="改名">✏️</button>
+        <button class="delete-room-btn" data-id="${id}" title="刪除">🗑</button>` : ''}
+      </span>
+    `;
+    li.addEventListener('click', (e) => {
+      if (e.target.classList.contains('rename-room-btn')) { renameRoom(id); return; }
+      if (e.target.classList.contains('delete-room-btn')) { deleteRoom(id); return; }
+      joinRoom(id, r.name);
+    });
+    li.addEventListener('contextmenu', (e) => {
+      e.preventDefault(); showRoomCtxMenu(e, id);
+    });
+    ul.appendChild(li);
+  });
+}
+
+function joinRoom(id, name) {
+  if (id === currentRoom) return;
+  currentRoom = id;
+  unreadCounts[id] = 0;
+  document.getElementById('current-room-name').textContent = name || rooms[id]?.name || id;
+  renderRoomList();
+  document.getElementById('messages').innerHTML = '';
+  socket.emit('join_room', { room_id: id }, (res) => {
+    if (res && res.status !== 'success') toast(res.message, 'error');
+  });
+  renderPin();
+}
+
+function showRoomCtxMenu(e, id) {
+  closeAllCtxMenus();
+  if (id === 'general') return;
+  const menu = document.createElement('div');
+  menu.className = 'ctx-menu';
+  menu.style.left = e.clientX + 'px';
+  menu.style.top  = e.clientY + 'px';
+  menu.innerHTML = `
+    <button class="rename-r">✏️ 改名</button>
+    <button class="delete-r danger">🗑 刪除頻道</button>
+  `;
+  menu.querySelector('.rename-r').onclick = () => { closeAllCtxMenus(); renameRoom(id); };
+  menu.querySelector('.delete-r').onclick = () => { closeAllCtxMenus(); deleteRoom(id); };
+  document.body.appendChild(menu);
+  setTimeout(() => document.addEventListener('click', closeAllCtxMenus, { once: true }), 0);
+}
+
+document.getElementById('create-room-btn').onclick = () => {
+  const name = prompt('新頻道名稱：');
+  if (!name || !name.trim()) return;
+  socket.emit('create_room', { name: name.trim() }, (res) => {
+    if (res?.status === 'success') joinRoom(res.room_id, name.trim());
+    else toast(res?.message || '建立失敗', 'error');
+  });
+};
+
+function renameRoom(id) {
+  const curr = rooms[id]?.name || '';
+  const name = prompt('新名稱：', curr);
+  if (!name || !name.trim()) return;
+  socket.emit('rename_room', { room_id: id, name: name.trim() }, (res) => {
+    if (res?.status !== 'success') toast(res?.message||'失敗', 'error');
+  });
+}
+
+function deleteRoom(id) {
+  if (!confirm(`確定刪除頻道「${rooms[id]?.name}」？此操作無法復原。`)) return;
+  socket.emit('delete_room', { room_id: id }, (res) => {
+    if (res?.status !== 'success') toast(res?.message||'刪除失敗', 'error');
+  });
+}
+
+// ════════════════════════════════════════════════════════════
+//  MESSAGES
+// ════════════════════════════════════════════════════════════
+function renderMessages() {
+  const container = document.getElementById('messages');
+  container.innerHTML = '';
+  const hist = roomHistories[currentRoom] || [];
+  if (!hist.length) {
+    const r = rooms[currentRoom];
+    container.innerHTML = `
+      <div class="welcome-banner">
+        <h2># ${escapeHtml(r?.name||'一般')}</h2>
+        <p>這是 <strong>#${escapeHtml(r?.name||'一般')}</strong> 頻道的開始。</p>
+      </div>`;
+    return;
+  }
+  let lastDate = '', lastSender = '', lastTime = '';
+  hist.forEach((msg, i) => {
+    const date = formatDate(msg.time);
+    if (date !== lastDate) {
+      const div = document.createElement('div');
+      div.className = 'date-divider'; div.textContent = date;
+      container.appendChild(div);
+      lastDate = date; lastSender = ''; lastTime = '';
+    }
+    appendMessage(msg, i, true);
+    lastSender = msg.sender; lastTime = msg.time;
+  });
+  scrollToBottom(true);
+}
+
+function appendMessage(msg, idx, skipScroll=false) {
+  const container = document.getElementById('messages');
+  const hist = roomHistories[currentRoom] || [];
+  const prev = idx > 0 ? hist[idx-1] : null;
+  const isCont = prev && prev.sender === msg.sender &&
+    Math.abs(new Date(msg.time?.replace(' ','T')) - new Date(prev.time?.replace(' ','T'))) < 5*60*1000;
+
+  const el = document.createElement('div');
+  el.className = 'msg-group' + (isCont ? ' msg-continued' : '');
+  el.dataset.sender = msg.sender;
+
+  const avatarSrc = avatarUrl(msg.sender);
+  let content = '';
+
+  if (msg.type === 'image' && msg.data) {
+    content = `<img class="msg-image" src="data:image/png;base64,${msg.data}" alt="${escapeHtml(msg.file_name||'圖片')}" loading="lazy">`;
+  } else if (msg.type === 'voice' && msg.data) {
+    content = `<div class="msg-audio"><audio controls src="data:audio/ogg;base64,${msg.data}"></audio></div>`;
+  } else if (msg.type === 'file' && msg.data) {
+    const icon = getFileIcon(msg.file_name||'');
+    content = `<a class="msg-file" href="data:application/octet-stream;base64,${msg.data}" download="${escapeHtml(msg.file_name||'file')}">
+      <span class="file-icon">${icon}</span>
+      <div class="file-info">
+        <div class="file-name">${escapeHtml(msg.file_name||'檔案')}</div>
+        <div class="file-size">${formatSize(msg.file_size)}</div>
+      </div>
+    </a>`;
+  } else if (msg.type === 'video' && msg.data) {
+    content = `<video controls style="max-width:400px;border-radius:6px;margin-top:6px;" src="data:video/mp4;base64,${msg.data}"></video>`;
+  } else {
+    content = `<div class="msg-text">${renderText(msg.text||'')}</div>`;
+  }
+
+  el.innerHTML = `
+    <img class="avatar" src="${avatarSrc}" alt="${escapeHtml(msg.sender)}" data-user="${escapeHtml(msg.sender)}">
+    <div class="msg-content">
+      <div class="msg-header">
+        <span class="msg-sender" data-user="${escapeHtml(msg.sender)}">${escapeHtml(msg.sender)}</span>
+        <span class="msg-time">${formatTime(msg.time)}</span>
+      </div>
+      ${content}
+    </div>`;
+
+  // click avatar / name → profile
+  el.querySelectorAll('[data-user]').forEach(btn => {
+    btn.onclick = () => showUserProfile(btn.dataset.user);
+  });
+
+  // click image → lightbox
+  const img = el.querySelector('.msg-image');
+  if (img) img.onclick = () => openLightbox(img.src);
+
+  // right-click → pin menu
+  el.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    const txt = msg.text || msg.file_name || '';
+    showMsgCtxMenu(e, txt, msg, idx);
+  });
+
+  container.appendChild(el);
+  if (!skipScroll) scrollToBottom();
+}
+
+function showMsgCtxMenu(e, txt, msg, idx) {
+  closeAllCtxMenus();
+  const menu = document.createElement('div');
+  menu.className = 'ctx-menu';
+  menu.style.left = e.clientX + 'px';
+  menu.style.top  = e.clientY + 'px';
+  menu.innerHTML = `
+    <button class="pin-msg">📌 釘選</button>
+    <button class="unpin-msg">❌ 解除釘選</button>
+    ${txt ? `<button class="copy-msg">📋 複製</button>` : ''}
+  `;
+  menu.querySelector('.pin-msg').onclick = () => {
+    socket.emit('pin_request', { room_id: currentRoom, text: txt || msg.file_name || '' });
+    closeAllCtxMenus();
+  };
+  menu.querySelector('.unpin-msg').onclick = () => {
+    socket.emit('pin_request', { room_id: currentRoom, text: '' });
+    closeAllCtxMenus();
+  };
+  if (txt) {
+    menu.querySelector('.copy-msg').onclick = () => {
+      navigator.clipboard.writeText(txt);
+      toast('已複製');
+      closeAllCtxMenus();
+    };
+  }
+  document.body.appendChild(menu);
+  setTimeout(() => document.addEventListener('click', closeAllCtxMenus, { once: true }), 0);
+}
+
+function getFileIcon(name) {
+  const ext = (name.match(/\.[^.]+$/)||[''])[0].toLowerCase();
+  const icons = {
+    '.pdf':'📄','.doc':'📝','.docx':'📝','.xls':'📊','.xlsx':'📊',
+    '.ppt':'🖥','.pptx':'🖥','.zip':'🗜','.rar':'🗜','.7z':'🗜',
+    '.txt':'📃','.mp4':'🎬','.mp3':'🎵','.wav':'🎵',
+    '.png':'🖼','.jpg':'🖼','.jpeg':'🖼','.gif':'🖼'
+  };
+  return icons[ext] || '📎';
+}
+
+// ════════════════════════════════════════════════════════════
+//  PIN
+// ════════════════════════════════════════════════════════════
+function renderPin() {
+  const text = roomPins[currentRoom] || '';
+  const bar  = document.getElementById('pin-bar');
+  const ptxt = document.getElementById('pin-text');
+  if (text) { bar.classList.add('visible'); ptxt.textContent = text; }
+  else       { bar.classList.remove('visible'); }
+}
+
+document.getElementById('pin-toggle-btn').onclick = () => {
+  document.getElementById('pin-bar').classList.toggle('visible');
+};
+document.getElementById('unpin-btn').onclick = () => {
+  socket.emit('pin_request', { room_id: currentRoom, text: '' });
+};
+
+// ════════════════════════════════════════════════════════════
+//  USER LIST
+// ════════════════════════════════════════════════════════════
+function renderUserList() {
+  const ul = document.getElementById('user-list');
+  document.getElementById('online-label').textContent = `在線上 — ${onlineUsers.length}`;
+  ul.innerHTML = '';
+  onlineUsers.forEach(u => {
+    const div = document.createElement('div');
+    div.className = 'user-item';
+    div.innerHTML = `
+      <div class="user-avatar-wrap">
+        <img src="${avatarUrl(u.name)}" alt="${escapeHtml(u.name)}">
+        <div class="user-online-dot"></div>
+      </div>
+      <span class="user-name">${escapeHtml(u.name)}${u.name===myNick?' (我)':''}</span>
+      ${u.voice ? '<span class="user-voice-icon">🔊</span>' : ''}
+    `;
+    div.onclick = () => showUserProfile(u.name);
+    ul.appendChild(div);
+  });
+}
+
+// ════════════════════════════════════════════════════════════
+//  SEND MESSAGE
+// ════════════════════════════════════════════════════════════
+const msgInput = document.getElementById('msg-input');
+
+msgInput.addEventListener('input', function() {
+  this.style.height = 'auto';
+  this.style.height = Math.min(this.scrollHeight, 180) + 'px';
+  // typing indicator
+  if (socket?.connected) {
+    socket.emit('typing_start');
+    clearTimeout(typingTimer);
+    typingTimer = setTimeout(() => socket.emit('typing_stop'), 2000);
+  }
+});
+
+msgInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendText(); }
+});
+
+document.getElementById('send-btn').onclick = sendText;
+
+// pendingMsgs: 記錄已送出但尚未收到伺服器確認的文字，避免重複顯示
+const pendingMsgs = new Set();
+
+function sendText() {
+  const t = msgInput.value.trim();
+  if (!t || !socket?.connected) return;
+  clearTimeout(typingTimer);
+  socket.emit('typing_stop');
+  typingUsers.delete(myNick);
+  renderTypingBar();
+  // 標記為 pending，讓 receive_message 收到時再真正顯示（不在本地 echo）
+  pendingMsgs.add(t);
+  socket.emit('chat_message', { type:'text', text:t });
+  msgInput.value = '';
+  msgInput.style.height = 'auto';
+}
+
+// ════════════════════════════════════════════════════════════
+//  FILE UPLOAD
+// ════════════════════════════════════════════════════════════
+document.getElementById('file-btn').onclick = () => document.getElementById('file-input').click();
+
+document.getElementById('file-input').onchange = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  e.target.value = '';
+  if (file.size > 8*1024*1024) return toast('檔案超過 8MB 限制', 'error');
+  toast('📤 上傳中…');
+  const b64 = await fileToB64(file);
+  let type = 'file';
+  if (file.type.startsWith('image/')) type = 'image';
+  else if (file.type.startsWith('video/')) type = 'video';
+  else if (file.type.startsWith('audio/')) type = 'voice';
+  socket.emit('chat_message', {
+    type, data: b64,
+    file_name: file.name, file_size: file.size,
+    text: `[${file.name}]`
+  });
+};
+
+function fileToB64(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result.split(',')[1]);
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+}
+
+// ════════════════════════════════════════════════════════════
+//  EMOJI PICKER
+// ════════════════════════════════════════════════════════════
+document.getElementById('emoji-btn').onclick = (e) => {
+  e.stopPropagation();
+  document.getElementById('emoji-picker').classList.toggle('visible');
+};
+document.addEventListener('click', (e) => {
+  if (!document.getElementById('emoji-picker').contains(e.target))
+    document.getElementById('emoji-picker').classList.remove('visible');
+});
+
+function buildEmojiGrid(filter='') {
+  const grid = document.getElementById('ep-grid');
+  grid.innerHTML = '';
+  const all = [
+    ...BUILTIN_EMOJI.filter(e => !filter || e.includes(filter)),
+    ...Object.entries(serverEmojis)
+      .filter(([code]) => !filter || code.includes(filter))
+      .map(([code, data]) => ({ code, b64: data.b64 }))
+  ];
+  all.forEach(e => {
+    const span = document.createElement('span');
+    if (typeof e === 'string') {
+      span.textContent = e;
+      span.title = e;
+      span.onclick = () => insertEmoji(e);
+    } else {
+      const img = document.createElement('img');
+      img.src = 'data:image/png;base64,' + e.b64;
+      img.style.cssText = 'width:22px;height:22px;object-fit:contain;';
+      span.appendChild(img);
+      span.title = e.code;
+      span.onclick = () => insertEmoji(e.code);
+    }
+    grid.appendChild(span);
+  });
+}
+
+document.getElementById('ep-search-input').oninput = (e) => buildEmojiGrid(e.target.value);
+
+function insertEmoji(e) {
+  const input = document.getElementById('msg-input');
+  const pos = input.selectionStart || 0;
+  const v = input.value;
+  input.value = v.slice(0,pos) + e + v.slice(pos);
+  input.focus();
+  input.setSelectionRange(pos+e.length, pos+e.length);
+}
+
+// ════════════════════════════════════════════════════════════
+//  LIGHTBOX
+// ════════════════════════════════════════════════════════════
+function openLightbox(src) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox').classList.add('visible');
+}
+document.getElementById('lightbox').onclick = () => {
+  document.getElementById('lightbox').classList.remove('visible');
+};
+
+// ════════════════════════════════════════════════════════════
+//  PROFILE MODAL
+// ════════════════════════════════════════════════════════════
+document.getElementById('profile-btn').onclick    = () => openProfileModal(myNick, true);
+document.getElementById('my-avatar-wrap').onclick = () => openProfileModal(myNick, true);
+
+document.getElementById('rename-account-btn').onclick = () => {
+  closeModal();
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal" style="width:400px">
+      <button class="close-btn" id="modal-close">✕</button>
+      <h2>變更帳號名稱</h2>
+      <div class="profile-field" style="margin-top:12px">
+        <label>目前密碼（驗證身份）</label>
+        <input type="password" id="rename-password" placeholder="輸入密碼">
+      </div>
+      <div class="profile-field">
+        <label>新帳號名稱（2~20字）</label>
+        <input type="text" id="rename-new-username" placeholder="輸入新帳號名稱">
+      </div>
+      <div class="auth-error" id="rename-error"></div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" id="modal-close2">取消</button>
+        <button class="btn btn-primary" id="do-rename-btn" style="width:auto">確認更名</button>
+      </div>
+    </div>
+  `;
+  document.getElementById('modal-container').appendChild(overlay);
+  overlay.querySelector('#modal-close').onclick  = closeModal;
+  overlay.querySelector('#modal-close2').onclick = closeModal;
+  overlay.onclick = (e) => { if (e.target === overlay) closeModal(); };
+  overlay.querySelector('#do-rename-btn').onclick = () => {
+    const pw   = overlay.querySelector('#rename-password').value.trim();
+    const newU = overlay.querySelector('#rename-new-username').value.trim();
+    const errEl = overlay.querySelector('#rename-error');
+    if (!pw || !newU) { errEl.textContent = '請填寫所有欄位'; errEl.style.display='block'; return; }
+    socket.emit('rename_account', { password: pw, new_username: newU }, (res) => {
+      if (res?.status !== 'success') {
+        errEl.textContent = res?.message || '更名失敗';
+        errEl.style.display = 'block';
+      } else {
+        myNick = res.new_username;
+        document.getElementById('my-nickname').textContent = myNick;
+        updateMyAvatar();
+        toast('✅ 帳號已更名為 ' + myNick, 'success');
+        closeModal();
+      }
+    });
+  };
+};
+
+function showUserProfile(username) {
+  const isSelf = username === myNick;
+  socket.emit('get_profile', { username }, (res) => {
+    if (res?.status !== 'success') return;
+    openProfileModal(username, isSelf, res);
+  });
+}
+
+function openProfileModal(username, isSelf, data=null) {
+  closeModal();
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'modal-overlay';
+
+  const bio = data?.bio || '';
+  const statusTxt = data?.user_status || '';
+
+  overlay.innerHTML = `
+    <div class="modal" style="width:440px">
+      <button class="close-btn" id="modal-close">✕</button>
+      <h2>${escapeHtml(username)} 的個人資料</h2>
+      <div class="profile-header">
+        <div class="profile-avatar-wrap" id="avatar-wrap">
+          <img id="profile-modal-avatar" src="${avatarUrl(username)}" alt="">
+          ${isSelf ? '<div class="edit-overlay">✏️</div>' : ''}
+        </div>
+        <div class="profile-info">
+          <h3>${escapeHtml(username)}</h3>
+          <p>${isSelf ? '點擊頭像可更換' : (onlineUsers.find(u=>u.name===username) ? '🟢 在線上' : '⚫ 離線')}</p>
+        </div>
+      </div>
+      ${isSelf ? `
+        <div class="profile-field">
+          <label>自我介紹</label>
+          <textarea id="pf-bio" rows="3" maxlength="200" placeholder="介紹一下自己…">${escapeHtml(bio)}</textarea>
+        </div>
+        <div class="profile-field">
+          <label>狀態</label>
+          <input type="text" id="pf-status" maxlength="100" placeholder="輸入目前狀態…" value="${escapeHtml(statusTxt)}">
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" id="modal-close2">取消</button>
+          <button class="btn btn-primary" id="save-profile-btn" style="width:auto">儲存</button>
+        </div>
+      ` : `
+        <div style="padding:8px 0; color:var(--text-muted); font-size:13px;">
+          ${bio ? `<p><strong>自我介紹：</strong>${escapeHtml(bio)}</p>` : ''}
+          ${statusTxt ? `<p style="margin-top:8px"><strong>狀態：</strong>${escapeHtml(statusTxt)}</p>` : ''}
+          ${!bio && !statusTxt ? '<p>此使用者尚未填寫個人資料。</p>' : ''}
+        </div>
+      `}
+    </div>
+  `;
+  document.getElementById('modal-container').appendChild(overlay);
+
+  overlay.querySelector('#modal-close').onclick = closeModal;
+  if (isSelf) {
+    overlay.querySelector('#modal-close2').onclick = closeModal;
+    overlay.querySelector('#save-profile-btn').onclick = saveProfile;
+    overlay.querySelector('#avatar-wrap').onclick = pickAvatar;
+  }
+  overlay.onclick = (e) => { if (e.target === overlay) closeModal(); };
+}
+
+function saveProfile() {
+  const bio    = document.getElementById('pf-bio')?.value || '';
+  const status = document.getElementById('pf-status')?.value || '';
+  socket.emit('update_profile', { bio, status }, (res) => {
+    if (res?.status === 'success') { toast('✅ 已儲存', 'success'); closeModal(); }
+    else toast(res?.message||'儲存失敗', 'error');
+  });
+}
+
+function pickAvatar() {
+  const input = document.createElement('input');
+  input.type = 'file'; input.accept = 'image/*';
+  input.onchange = async () => {
+    const file = input.files[0]; if (!file) return;
+    if (file.size > 2*1024*1024) return toast('頭像超過 2MB', 'error');
+    const b64 = await fileToB64(file);
+    socket.emit('upload_avatar', { image_b64: b64 }, (res) => {
+      if (res?.status === 'success') { toast('✅ 頭像已更新', 'success'); closeModal(); }
+      else toast(res?.message||'上傳失敗', 'error');
+    });
+  };
+  input.click();
+}
+
+function closeModal() {
+  document.getElementById('modal-container').innerHTML = '';
+}
+
+// ════════════════════════════════════════════════════════════
+//  KEYBOARD SHORTCUTS
+// ════════════════════════════════════════════════════════════
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    closeModal();
+    closeAllCtxMenus();
+    document.getElementById('lightbox').classList.remove('visible');
+    document.getElementById('emoji-picker').classList.remove('visible');
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+//  DRAG & DROP FILES
+// ════════════════════════════════════════════════════════════
+const chatMain = document.getElementById('chat-main');
+chatMain.addEventListener('dragover', (e) => { e.preventDefault(); chatMain.style.outline = '2px dashed var(--blue)'; });
+chatMain.addEventListener('dragleave', () => { chatMain.style.outline = ''; });
+chatMain.addEventListener('drop', async (e) => {
+  e.preventDefault(); chatMain.style.outline = '';
+  const file = e.dataTransfer.files[0]; if (!file) return;
+  if (file.size > 8*1024*1024) return toast('檔案超過 8MB', 'error');
+  toast('📤 上傳中…');
+  const b64 = await fileToB64(file);
+  let type = 'file';
+  if (file.type.startsWith('image/')) type = 'image';
+  else if (file.type.startsWith('video/')) type = 'video';
+  else if (file.type.startsWith('audio/')) type = 'voice';
+  socket.emit('chat_message', { type, data:b64, file_name:file.name, file_size:file.size, text:`[${file.name}]` });
+});
+
+// ════════════════════════════════════════════════════════════
+//  VOICE CHAT  (WebRTC → UDP relay via voice_server.py)
+// ════════════════════════════════════════════════════════════
+const VOICE_PORT = 5006;
+let voiceActive  = false;
+let mediaStream  = null;
+let audioCtx     = null;
+let processor    = null;
+let udpSock      = null; // WebSocket tunnel to UDP (瀏覽器不支援原生 UDP)
+// 由於瀏覽器無法直接 UDP，改用 WebRTC PeerConnection 做 P2P 或 MediaRecorder 錄音後走 socket
+// 這裡使用 socket.io 作為語音資料傳輸通道（伺服器轉發）
+
+let voicePeers   = {};  // { username: { pc, stream } }
+let localStream  = null;
+
+const micBtn = document.getElementById('mic-btn');
+
+micBtn.addEventListener('click', async () => {
+  if (!voiceActive) {
+    await startVoice();
+  } else {
+    stopVoice();
+  }
+});
+
+async function startVoice() {
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+  } catch(e) {
+    toast('❌ 無法取得麥克風：' + e.message, 'error');
+    return;
+  }
+  voiceActive = true;
+  micBtn.textContent = '🔴';
+  micBtn.title = '語音通話中（點擊離開）';
+  micBtn.style.color = 'var(--red)';
+  socket.emit('toggle_voice', true);
+  toast('🎤 語音已開啟', 'success');
+
+  // 通知同房間其他用戶，讓他們與我建立 PeerConnection
+  socket.emit('voice_join', { room_id: currentRoom });
+}
+
+function stopVoice() {
+  if (localStream) {
+    localStream.getTracks().forEach(t => t.stop());
+    localStream = null;
+  }
+  // 關閉所有 peer connections
+  Object.values(voicePeers).forEach(({ pc }) => pc.close());
+  voicePeers = {};
+
+  voiceActive = false;
+  micBtn.textContent = '🎤';
+  micBtn.title = '語音通話';
+  micBtn.style.color = '';
+  socket.emit('toggle_voice', false);
+  socket.emit('voice_leave', { room_id: currentRoom });
+  toast('🎤 語音已關閉');
+}
+
+// ── WebRTC signaling via socket.io ────────────────────────────
+// 需要伺服器 server.py 支援轉發這幾個事件：
+// voice_join, voice_offer, voice_answer, voice_ice, voice_leave
+
+function setupVoiceSignaling() {
+  // 有人加入語音 → 我主動向他發 offer
+  socket.on('voice_user_joined', async ({ from }) => {
+    if (!voiceActive || from === myNick) return;
+    const pc = createPC(from);
+    voicePeers[from] = { pc };
+    localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    socket.emit('voice_offer', { to: from, sdp: offer });
+  });
+
+  // 收到 offer → 回應 answer
+  socket.on('voice_offer', async ({ from, sdp }) => {
+    if (!voiceActive) return;
+    const pc = createPC(from);
+    voicePeers[from] = { pc };
+    localStream?.getTracks().forEach(t => pc.addTrack(t, localStream));
+    await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    socket.emit('voice_answer', { to: from, sdp: answer });
+  });
+
+  // 收到 answer
+  socket.on('voice_answer', async ({ from, sdp }) => {
+    const peer = voicePeers[from];
+    if (!peer) return;
+    await peer.pc.setRemoteDescription(new RTCSessionDescription(sdp));
+  });
+
+  // ICE candidate
+  socket.on('voice_ice', async ({ from, candidate }) => {
+    const peer = voicePeers[from];
+    if (!peer || !candidate) return;
+    try { await peer.pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch(e) {}
+  });
+
+  // 對方離開
+  socket.on('voice_user_left', ({ from }) => {
+    const peer = voicePeers[from];
+    if (peer) { peer.pc.close(); delete voicePeers[from]; }
+  });
+}
+
+function createPC(remoteUser) {
+  const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+
+  pc.onicecandidate = (e) => {
+    if (e.candidate) socket.emit('voice_ice', { to: remoteUser, candidate: e.candidate });
+  };
+
+  pc.ontrack = (e) => {
+    let audio = document.getElementById('voice-audio-' + CSS.escape(remoteUser));
+    if (!audio) {
+      audio = document.createElement('audio');
+      audio.id = 'voice-audio-' + remoteUser;
+      audio.autoplay = true;
+      document.body.appendChild(audio);
+    }
+    audio.srcObject = e.streams[0];
+  };
+
+  pc.onconnectionstatechange = () => {
+    if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+      const audio = document.getElementById('voice-audio-' + CSS.escape(remoteUser));
+      if (audio) audio.remove();
+    }
+  };
+
+  return pc;
+}
+
+// 在 connectSocket() 被呼叫後初始化語音 signaling
+const _origConnect = connectSocket;
+// 用 MutationObserver 方式等 socket 建好再設定（避免覆蓋問題）
+// 直接在 connectSocket 結尾呼叫 setupVoiceSignaling
+// ════════════════════════════════════════════════════════════
+//  INIT
+// ════════════════════════════════════════════════════════════
+connectSocket();
+buildEmojiGrid();
+setupVoiceSignaling();
+</script>
+</body>
+</html>
