@@ -27,3 +27,16 @@ Compared to the [Basic Version](https://github.com/Jjoweek0819/Jchat-Basic-Ver-B
 - Flask
 - Flask-SocketIO
 
+### 👥 Contributors
+Special thanks to my friends who helped with the development and testing:
+* **[Wesley Wang](https://github.com/wangwesley1125)** - Assisted with UI Design, Bug fixing, and Testing.
+
+### 🛠 Tools Used
+* **Python**: Core programming language.
+* **PyQt6**: Desktop GUI framework.
+* **Flask-SocketIO**: Real-time messaging and file handling.
+* **PyAudio**: Audio capturing and playback.
+* **UDP Protocol**: Low-latency voice transmission.
+* **JSON**: Lightweight data storage.
+* **Claude**: Used for vibe-coding.
+* **Gemini**: Used for safety checks and debugging.
